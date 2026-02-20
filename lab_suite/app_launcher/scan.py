@@ -15,12 +15,12 @@ SCRIPT_EXCLUDE_DIRS = frozenset({"_core", "assignments", "templates"})
 
 @dataclass
 class LabEntry:
-    """Ein Eintrag im Launcher: entweder eine App oder ein Skript."""
-    kind: str  # "app" | "script"
+    """Ein Eintrag im Launcher: App, Skript oder reine Dokumentenabgabe (ohne Programmieraufgabe)."""
+    kind: str  # "app" | "script" | "document"
     chapter: str  # z. B. "01", "03"
     folder_name: str  # Ordnername, z. B. 01_01_Signale_basics
     label: str  # Anzeigename
-    # Für App: Modulname (labs.01_05_chapter1); für Skript: relativer Pfad (labs/01_01_Signale_basics/matplotlib-demo.py)
+    # Für App: Modulname; für Skript: relativer Pfad; für document: leer (kein Start)
     run_target: str
     has_submissions_folder: bool
 
@@ -56,48 +56,55 @@ def scan_labs(labs_root: Path) -> list[ChapterGroup]:
     """
     Scannt labs_root (lab_suite/labs) und liefert gruppierte Einträge.
 
-    Regel pro Aufgabenordner (z. B. 01_01_Signale_basics): Es liegt entweder
-    - eine NiceGUI-App (__main__.py vorhanden) ODER
-    - ein bzw. mehrere einfache Python-Skripte (oberste Ebene, keine __main__.py).
-    Nie beides – der Scan erkennt zuerst __main__.py (dann App), sonst Skripte.
+    Pro Aufgabenordner wird immer mindestens eine Task-Card erzeugt:
+    - NiceGUI-App (__main__.py) → ein Eintrag kind="app" (Web-Icon).
+    - Keine App, aber Python-Skripte (oberste Ebene) → je Skript ein Eintrag kind="script" (Code-Icon).
+    - Weder App noch Skripte → ein Eintrag kind="document" (Dokument-Icon): reine Dokumentenabgabe,
+      gleiche submissions/-Nutzung, aber ohne „Starten“-Button.
     """
     if not labs_root.is_dir():
         return []
 
     groups: dict[str, list[LabEntry]] = {}
     for item in sorted(labs_root.iterdir()):
-        if not item.is_dir() or item.name.startswith("."):
+        if not item.is_dir() or item.name.startswith(".") or item.name == "__pycache__":
             continue
-        # Python-Modulname: Ordnername (Unterstriche erlaubt)
         folder_name = item.name
         chapter = _chapter_from_folder(folder_name)
         submissions_dir = item / "submissions"
         has_submissions = submissions_dir.is_dir()
 
         if (item / "__main__.py").exists():
-            # NiceGUI-App
-            mod = f"labs.{folder_name}"
             entry = LabEntry(
                 kind="app",
                 chapter=chapter,
                 folder_name=folder_name,
                 label=folder_name,
-                run_target=mod,
+                run_target=f"labs.{folder_name}",
                 has_submissions_folder=has_submissions,
             )
             groups.setdefault(chapter, []).append(entry)
         else:
             scripts = _top_level_scripts(item)
-            if not scripts:
-                continue
-            for script_name in scripts:
-                rel_path = f"labs/{folder_name}/{script_name}"
+            if scripts:
+                for script_name in scripts:
+                    entry = LabEntry(
+                        kind="script",
+                        chapter=chapter,
+                        folder_name=folder_name,
+                        label=f"{folder_name} / {script_name}",
+                        run_target=f"labs/{folder_name}/{script_name}",
+                        has_submissions_folder=has_submissions,
+                    )
+                    groups.setdefault(chapter, []).append(entry)
+            else:
+                # Keine Programmieraufgabe: trotzdem eine Karte für Dokumentenabgabe
                 entry = LabEntry(
-                    kind="script",
+                    kind="document",
                     chapter=chapter,
                     folder_name=folder_name,
-                    label=f"{folder_name} / {script_name}",
-                    run_target=rel_path,
+                    label=folder_name,
+                    run_target="",
                     has_submissions_folder=has_submissions,
                 )
                 groups.setdefault(chapter, []).append(entry)

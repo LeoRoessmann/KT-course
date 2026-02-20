@@ -57,6 +57,13 @@ coverage.xml
 .env
 .env.local
 
+# Instructor key (nicht ins Studenten-Repo exportieren)
+.instructor_key
+lab_suite/.instructor_key
+
+# Launcher: lokaler UI-State (welche Kapitel-Expansions offen/zu)
+lab_suite/launcher_expansion_state.json
+
 # Node.js / Frontend
 node_modules/
 frontend/node_modules/

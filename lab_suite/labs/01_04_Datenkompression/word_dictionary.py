@@ -11,14 +11,10 @@ $index 1
 
 import os,time,math
 
-cwd=os.getcwd()
-print('Current Working Directory=',cwd)
-pos = cwd.find('topics')
-#print('pos',pos)
-if pos == -1:
-    path = os.path.join('topics','01_DataCompression','sidedata','sampletext.txt')
-else:
-    path = os.path.join(cwd[:pos],'topics','01_DataCompression','sidedata','sampletext.txt')
+# Pfad relativ zum Skript-Verzeichnis, damit das Skript von überall (z. B. App-Launcher) funktioniert
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+path = os.path.join(_SCRIPT_DIR, "sampletext.txt")
+
 print('Analyze the file: ',path)
 tokens = dict()
 count = 0

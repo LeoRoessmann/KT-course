@@ -3,6 +3,7 @@ NiceGUI-Oberfläche des App-Launchers: hierarchische Liste, Start-Buttons, E-Mai
 """
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -53,6 +54,75 @@ def _launch(entry: LabEntry) -> None:
         _launch_app(entry)
     else:
         _launch_script(entry)
+
+
+def _open_script_in_editor(entry: LabEntry) -> None:
+    """Öffnet das zum Eintrag gehörige Python-Skript im Standard-Editor (z. B. VS Code)."""
+    if entry.kind != "script":
+        return
+    script_path = LAB_SUITE_ROOT / entry.run_target
+    if not script_path.is_file():
+        ui.notify(f"Datei nicht gefunden: {script_path}", type="negative")
+        return
+    ok, msg = submit.open_file_with_default_app(script_path)
+    if ok:
+        ui.notify(f"Editor: {script_path.name}", type="positive")
+    else:
+        ui.notify(msg, type="negative")
+
+
+# Konvention: NiceGUI-Apps mit Übungs-Code öffnen assignments/user_template.py im Editor
+def _get_app_user_template_path(folder_name: str) -> Path | None:
+    """Pfad zu labs/<folder_name>/assignments/user_template.py, falls vorhanden."""
+    path = LABS_DIR / folder_name / "assignments" / "user_template.py"
+    return path if path.is_file() else None
+
+
+def _open_app_user_template(entry: LabEntry) -> None:
+    """Öffnet assignments/user_template.py der App im Standard-Editor (für Studierende zum Ergänzen)."""
+    if entry.kind != "app":
+        return
+    template_path = _get_app_user_template_path(entry.folder_name)
+    if not template_path:
+        ui.notify("assignments/user_template.py nicht gefunden.", type="warning")
+        return
+    ok, msg = submit.open_file_with_default_app(template_path)
+    if ok:
+        ui.notify(f"Editor: {template_path.name}", type="positive")
+    else:
+        ui.notify(msg, type="negative")
+
+
+def _get_doc_md_path(folder_name: str) -> Path | None:
+    """Pfad zu labs/<folder_name>/doc.md, falls vorhanden; sonst None."""
+    path = LABS_DIR / folder_name / "doc.md"
+    return path if path.is_file() else None
+
+
+def _read_doc_md(folder_name: str) -> str:
+    """Liest labs/<folder_name>/doc.md; leere Zeichenkette falls nicht vorhanden."""
+    doc_path = _get_doc_md_path(folder_name)
+    if not doc_path:
+        return ""
+    try:
+        return doc_path.read_text(encoding="utf-8")
+    except Exception:
+        return ""
+
+
+def _show_doc_dialog(folder_name: str) -> None:
+    """Zeigt doc.md gerendert (Markdown + LaTeX) in einem Dialog im Browser – kein externer Editor."""
+    content = _read_doc_md(folder_name)
+    if not content.strip():
+        ui.notify("doc.md nicht gefunden oder leer.", type="warning")
+        return
+    extras = _task_markdown_extras()
+    with ui.dialog() as d, ui.card().classes("q-pa-md min-w-[320px] max-w-[90vw] max-h-[85vh] overflow-auto"):
+        ui.label("Erklärung (doc.md)").classes("text-subtitle1 text-weight-medium")
+        ui.label(folder_name).classes("text-caption text-grey-7 q-mb-sm")
+        ui.markdown(content, extras=extras).classes("q-pa-sm bg-white rounded-borders text-body2")
+        ui.button("Schließen", on_click=d.close).props("flat color=primary").classes("q-mt-sm")
+    d.open()
 
 
 def _on_zip_create(folder_name: str) -> None:
@@ -315,6 +385,122 @@ def _read_task_md(folder_name: str) -> str:
         return ""
 
 
+# Unterstützte Fragebogen-Formate: Erweiterung und Priorität (erste gefundene gewinnt)
+QUESTIONS_EXTENSIONS = (".md", ".docx", ".txt")
+
+
+def _get_questions_path(folder_name: str) -> Path | None:
+    """
+    Sucht in labs/<folder_name>/submissions/ nach questions.<ext> (Reihenfolge: .md, .docx, .txt).
+    Gibt den Pfad zur ersten gefundenen Datei zurück oder None.
+    """
+    submissions_dir = LABS_DIR / folder_name / "submissions"
+    if not submissions_dir.is_dir():
+        return None
+    for ext in QUESTIONS_EXTENSIONS:
+        path = submissions_dir / f"questions{ext}"
+        if path.is_file():
+            return path
+    return None
+
+
+def _has_questions_file(folder_name: str) -> bool:
+    """True, wenn in submissions/ eine questions.*-Datei (md, docx, txt) existiert."""
+    return _get_questions_path(folder_name) is not None
+
+
+def _open_questionnaire(folder_name: str) -> None:
+    """
+    Öffnet den Fragebogen: Sucht questions.<ext> (md, docx, txt). Fehlt answers.<ext>,
+    wird questions.<ext> dorthin kopiert; danach wird answers.<ext> im Standard-Editor geöffnet.
+    """
+    submissions_dir = LABS_DIR / folder_name / "submissions"
+    questions_path = _get_questions_path(folder_name)
+    if not questions_path or not questions_path.is_file():
+        ui.notify("Keine questions.md / questions.docx / questions.txt gefunden.", type="warning")
+        return
+    ext = questions_path.suffix
+    answers_path = submissions_dir / f"answers{ext}"
+    try:
+        submissions_dir.mkdir(parents=True, exist_ok=True)
+        if not answers_path.is_file():
+            shutil.copy2(questions_path, answers_path)
+            ui.notify(f"answers{ext} aus questions{ext} erstellt und geöffnet.", type="positive")
+        else:
+            ui.notify(f"answers{ext} geöffnet.", type="positive")
+        ok, msg = submit.open_file_with_default_app(answers_path)
+        if not ok:
+            ui.notify(msg, type="negative")
+    except OSError as e:
+        ui.notify(f"Fehler: {e}", type="negative")
+
+
+# Standard-Dateiname für Konsolenausgabe (Skript schreibt parallel dorthin)
+CONSOLE_LOG_NAME = "console_log.txt"
+
+
+def _get_console_log_path(folder_name: str) -> Path | None:
+    """Pfad zu submissions/console_log.txt, falls vorhanden."""
+    path = LABS_DIR / folder_name / "submissions" / CONSOLE_LOG_NAME
+    return path if path.is_file() else None
+
+
+def _has_console_log(folder_name: str) -> bool:
+    """True, wenn submissions/console_log.txt existiert."""
+    return _get_console_log_path(folder_name) is not None
+
+
+def _get_answers_path(folder_name: str) -> Path | None:
+    """Erste existierende answers-Datei (answers.md, answers.txt, answers.docx) in submissions/."""
+    submissions_dir = LABS_DIR / folder_name / "submissions"
+    if not submissions_dir.is_dir():
+        return None
+    for ext in QUESTIONS_EXTENSIONS:
+        p = submissions_dir / f"answers{ext}"
+        if p.is_file():
+            return p
+    return None
+
+
+def _merge_console_log_into_answers(folder_name: str) -> None:
+    """
+    Hängt den Inhalt von submissions/console_log.txt an answers.md bzw. answers.txt an
+    (unter einer Überschrift „Konsolenausgabe“). answers.docx wird nicht unterstützt.
+    """
+    console_path = _get_console_log_path(folder_name)
+    answers_path = _get_answers_path(folder_name)
+    if not console_path:
+        ui.notify("console_log.txt nicht gefunden. Skript zuerst ausführen.", type="warning")
+        return
+    if not answers_path:
+        ui.notify("Bitte zuerst Fragebogen öffnen (answers.md/an answers.txt anlegen).", type="warning")
+        return
+    if answers_path.suffix == ".docx":
+        ui.notify("Einfügen in answers.docx wird nicht unterstützt. Bitte answers.md oder answers.txt nutzen.", type="warning")
+        return
+    try:
+        log_content = console_path.read_text(encoding="utf-8")
+    except OSError as e:
+        ui.notify(f"Fehler beim Lesen: {e}", type="negative")
+        return
+    try:
+        existing = answers_path.read_text(encoding="utf-8")
+    except OSError as e:
+        ui.notify(f"Fehler beim Lesen der Antwortdatei: {e}", type="negative")
+        return
+    separator = "\n\n---\n\n## Konsolenausgabe\n\n"
+    if answers_path.suffix == ".md":
+        new_part = "```\n" + log_content.strip() + "\n```"
+    else:
+        new_part = log_content.strip()
+    new_content = existing.rstrip() + separator + new_part + "\n"
+    try:
+        answers_path.write_text(new_content, encoding="utf-8")
+        ui.notify("Konsolenausgabe in answers eingefügt.", type="positive")
+    except OSError as e:
+        ui.notify(f"Fehler beim Schreiben: {e}", type="negative")
+
+
 def _task_markdown_extras() -> list[str]:
     """Extras für ui.markdown (LaTeX nur wenn latex2mathml verfügbar)."""
     extras = ["fenced-code-blocks", "tables"]
@@ -495,8 +681,44 @@ def build_ui() -> None:
                                     if reminder:
                                         msg, color = reminder
                                         ui.label(msg).classes(f"text-caption text-weight-medium {color}")
+                                if entry.kind in ("script", "app") and _get_doc_md_path(entry.folder_name):
+                                    ui.button(
+                                        icon="menu_book",
+                                        on_click=lambda fn=entry.folder_name: _show_doc_dialog(fn),
+                                    ).props("flat dense round color=secondary").tooltip("Erklärung (doc.md) im Browser anzeigen")
+                                if entry.kind == "script":
+                                    ui.button(
+                                        "EDIT",
+                                        icon="edit",
+                                        on_click=lambda e=entry: _open_script_in_editor(e),
+                                    ).props("flat dense color=secondary").tooltip("Skript im Editor öffnen (z. B. VS Code)")
+                                elif entry.kind == "app" and _get_app_user_template_path(entry.folder_name):
+                                    ui.button(
+                                        "EDIT",
+                                        icon="edit",
+                                        on_click=lambda e=entry: _open_app_user_template(e),
+                                    ).props("flat dense color=secondary").tooltip("assignments/user_template.py im Editor öffnen (eigenen Code ergänzen)")
                                 if entry.kind != "document":
                                     ui.button("Starten", on_click=lambda e=entry: _launch(e)).props("flat dense color=primary")
+                        # Fragebogen-Button: nur wenn submissions/ existiert und questions.* (md/docx/txt) vorhanden (einmal pro Karte)
+                        if any(e.has_submissions_folder for e in folder_entries) and _has_questions_file(folder_name):
+                            with ui.row().classes("items-center q-gutter-sm full-width q-mt-xs"):
+                                ui.icon("quiz", size="sm").classes("text-secondary")
+                                ui.label("Fragebogen").classes("text-caption text-grey-7")
+                                ui.button(
+                                    "Öffnen / Bearbeiten",
+                                    icon="edit_note",
+                                    on_click=lambda fn=folder_name: _open_questionnaire(fn),
+                                ).props("flat dense color=secondary").tooltip(
+                                    "answers.<ext> aus questions.<ext> anlegen (falls neu) und öffnen (Format: md, docx, txt)"
+                                )
+                                if _has_console_log(folder_name):
+                                    ui.button(
+                                        icon="merge_type",
+                                        on_click=lambda fn=folder_name: _merge_console_log_into_answers(fn),
+                                    ).props("flat dense round color=secondary").tooltip(
+                                        "Konsolenausgabe (console_log.txt) in answers einfügen"
+                                    )
                         # Drop-Zone für submissions/ (nur wenn Lab submissions-Ordner hat; grünes Badge signalisiert das)
                         if any(e.has_submissions_folder for e in folder_entries):
                             ui.upload(

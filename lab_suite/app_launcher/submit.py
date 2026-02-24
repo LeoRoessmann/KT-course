@@ -40,6 +40,26 @@ def read_submit_to_email(lab_suite_root: Path) -> str:
     return ""
 
 
+def open_file_with_default_app(file_path: Path) -> tuple[bool, str]:
+    """
+    Öffnet eine Datei mit dem systemeigenen Standard-Programm (Editor/Viewer).
+    Rückgabe: (Erfolg, Meldung)
+    """
+    path_str = str(file_path.resolve())
+    if not file_path.is_file():
+        return False, f"Datei nicht gefunden: {file_path.name}"
+    try:
+        if sys.platform == "win32":
+            os.startfile(path_str)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", path_str], check=False)
+        else:
+            subprocess.run(["xdg-open", path_str], check=False)
+    except Exception as e:
+        return False, str(e)
+    return True, path_str
+
+
 def open_submissions_folder(lab_suite_root: Path, folder_name: str) -> tuple[bool, str]:
     """
     Öffnet den Dateimanager im Ordner lab_suite/labs/<folder_name>/submissions/.

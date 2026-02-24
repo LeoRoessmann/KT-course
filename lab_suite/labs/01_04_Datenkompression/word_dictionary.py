@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 """
 Created on Fri Feb 19 16:07:01 2021
@@ -9,11 +8,44 @@ $comment create a dictionary for words in a text file
 $index 1
 """
 
-import os,time,math
+import os
+import sys
+import time
+import math
 
 # Pfad relativ zum Skript-Verzeichnis, damit das Skript von überall (z. B. App-Launcher) funktioniert
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 path = os.path.join(_SCRIPT_DIR, "sampletext.txt")
+
+# Konsolenausgabe parallel in submissions/console_log.txt schreiben (für Launcher „Konsolenausgabe einfügen“)
+_CONSOLE_LOG_PATH = os.path.join(_SCRIPT_DIR, "submissions", "console_log.txt")
+
+
+class _Tee:
+    """Schreibt gleichzeitig in mehrere Streams (z. B. Konsole + Datei)."""
+    def __init__(self, *streams):
+        self.streams = streams
+    def write(self, data):
+        for s in self.streams:
+            s.write(data)
+            if getattr(s, "flush", None):
+                s.flush()
+    def flush(self):
+        for s in self.streams:
+            if getattr(s, "flush", None):
+                s.flush()
+    def writable(self):
+        return True
+
+
+_log_file = None
+try:
+    os.makedirs(os.path.dirname(_CONSOLE_LOG_PATH), exist_ok=True)
+    _log_file = open(_CONSOLE_LOG_PATH, "w", encoding="utf-8")
+    sys.stdout = _Tee(sys.__stdout__, _log_file)
+except OSError:
+    pass  # ohne Log-Datei weiterlaufen
+
 
 print('Analyze the file: ',path)
 tokens = dict()
@@ -50,8 +82,16 @@ for item in token_list:
 
 print('-----------------------------------------------------------------\n')
 print('Average Entropy H = {:3.3f} bit/word'.format(H_average)   ) 
-print('Total Entropy of {:d} words H={:3.3f} bit ({} bytes)'.format(count, H_average*count,int(H_average*count/8)))  
+print('Total Entropy of {:d} words H={:3.3f} bit ({} bytes)'.format(count, H_average*count, math.ceil(H_average*count/8)))  
 print('Size of text file: {} bytes'.format(os.path.getsize(path)))
+
+# Log-Datei schließen, danach Konsole normal weiter nutzen (Endlosschleife)
+if _log_file is not None:
+    try:
+        sys.stdout = sys.__stdout__
+        _log_file.close()
+    except (OSError, NameError):
+        pass
 
 #infinite loop to keep console open
 while True:

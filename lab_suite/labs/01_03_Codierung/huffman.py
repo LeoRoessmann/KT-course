@@ -9,7 +9,40 @@ $comment Enter a string of characters and compute the Huffman code tree
 $index 2
 """
 
+import os
+import sys
 import time
+
+# Konsolenausgabe parallel in submissions/console_log.txt schreiben (für Launcher „Konsolenausgabe einfügen“)
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_CONSOLE_LOG_PATH = os.path.join(_SCRIPT_DIR, "submissions", "console_log.txt")
+
+
+class _Tee:
+    """Schreibt gleichzeitig in mehrere Streams (z. B. Konsole + Datei)."""
+    def __init__(self, *streams):
+        self.streams = streams
+    def write(self, data):
+        for s in self.streams:
+            s.write(data)
+            if getattr(s, "flush", None):
+                s.flush()
+    def flush(self):
+        for s in self.streams:
+            if getattr(s, "flush", None):
+                s.flush()
+    def writable(self):
+        return True
+
+
+_log_file = None
+try:
+    os.makedirs(os.path.dirname(_CONSOLE_LOG_PATH), exist_ok=True)
+    _log_file = open(_CONSOLE_LOG_PATH, "w", encoding="utf-8")
+    sys.stdout = _Tee(sys.__stdout__, _log_file)
+except OSError:
+    pass  # ohne Log-Datei weiterlaufen
+
 # Huffman Coding in python
 
 #string = 'BCAADDDCCACACAC'
@@ -75,6 +108,14 @@ print('\n Char | Huffman code ')
 print('----------------------')
 for (char, frequency) in freq:
     print(' %-4r |%12s' % (char, huffmanCode[char]))
-    
+
+# Log-Datei schließen, danach Konsole normal weiter nutzen (Endlosschleife)
+if _log_file is not None:
+    try:
+        sys.stdout = sys.__stdout__
+        _log_file.close()
+    except (OSError, NameError):
+        pass
+
 while True:
     time.sleep(1)    

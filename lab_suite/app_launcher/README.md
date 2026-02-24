@@ -12,15 +12,28 @@ python -m app_launcher
 
 Browser öffnet sich typisch unter `http://localhost:8082`.
 
+**Port 8082 schon belegt (verwaiste Launcher-Instanz)?** Port freimachen und danach Launcher neu starten:
+```bash
+# Vom Repo-Root (KT-workspace):
+python lab_suite/scripts/free_port_8082.py
+# oder unter Windows:
+.\free_port_8082.ps1
+```
+
 ## Erkennung
 
 Es wird **für jeden Unterordner** unter `labs/` mindestens eine **Task-Card** erzeugt. Drei Fälle:
 
 - **NiceGUI-App:** Ordner enthält `__main__.py` → ein Eintrag mit **Web-Icon**, Start mit `python -m labs.<Ordnername>`.
-- **Python-Skripte:** Ordner ohne `__main__.py`, dafür `.py`-Dateien auf oberster Ebene → je Skript ein Eintrag mit **Code-Icon** (`</>`), Start mit `python labs/<Ordner>/<Skript>.py`.
+- **NiceGUI-Apps:** **EDIT** öffnet – falls vorhanden – **`assignments/user_template.py`** im Editor (hier ergänzen Studierende den eigenen Code). **Doc** (Icon Buch) zeigt `doc.md` im Browser. **Starten** startet die App.
+- **Python-Skripte:** **EDIT** öffnet das Skript im Editor, **Doc** zeigt `doc.md` im Browser, **Starten** führt das Skript aus.
 - **Nur Dokumentenabgabe:** Weder App noch Skripte → ein Eintrag mit **Dokument-Icon**; gleiche Nutzung von `submissions/` (Abgabe, Ordner, Drop-Zone), aber **kein „Starten“-Button** (keine Programmieraufgabe).
 
 Die Hierarchie folgt dem Ordnernamen (z. B. `01_01_...` → Kapitel 01). Wenn `submissions/task.md` existiert, wird „Aufgabe anzeigen“ **einmal pro Aufgabenordner** in einer Expansion angezeigt.
+
+**Fragebogen (questions.* → answers.*):** Legst du in einem Lab unter `submissions/` eine Fragenvorlage ab (`questions.md`, `questions.docx` oder `questions.txt`), erscheint **„Fragebogen – Öffnen / Bearbeiten“**. Die Priorität ist: `.md` → `.docx` → `.txt` (erste gefundene Datei zählt). Ein Klick kopiert bei Bedarf `questions.<ext>` nach `answers.<ext>` und öffnet die Antwortdatei im Standard-Programm. **Bilder in .md:** Mit `![Beschreibung](screenshot.png)` lassen sich Screenshots einbinden.
+
+**Konsolenausgabe einfügen:** Schreibt ein Skript seine Ausgabe parallel in `submissions/console_log.txt`, erscheint neben dem Fragebogen-Button ein **Merge-Symbol**. Ein Klick hängt den Inhalt von `console_log.txt` an `answers.md` bzw. `answers.txt` an (unter „Konsolenausgabe“). So können Studierende den Skript-Output in den Antwortbogen übernehmen und kommentieren. Reihenfolge: Fragebogen öffnen (answers anlegen) → Skript ausführen → Merge klicken → Antworten kommentieren.
 
 ## Submissions (Abgaben)
 

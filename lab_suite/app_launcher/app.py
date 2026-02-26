@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Callable
 
 from nicegui import ui
 
@@ -656,9 +657,13 @@ def _build_git_expansion() -> None:
             ui.button("Git Status", on_click=lambda: run_and_show(["status"], "Git Status")).props(
                 "flat dense color=secondary"
             )
-            ui.button("Git Log (-10)", on_click=lambda: run_and_show(["log", "--oneline", "-10"], "Git Log")).props(
-                "flat dense color=secondary"
-            )
+            ui.button(
+                "Git Log (-10)",
+                on_click=lambda: run_and_show(
+                    ["log", "-10", "--format=%h %ad %s", "--date=short"],
+                    "Git Log",
+                ),
+            ).props("flat dense color=secondary").tooltip("Hash, Datum, Betreff (--date=short)")
             ui.button("Git Remote", on_click=lambda: run_and_show(["remote", "-v"], "Git Remote")).props(
                 "flat dense color=secondary"
             )
@@ -677,8 +682,9 @@ def _build_git_expansion() -> None:
             )
 
 
-def _show_git_push_dialog(folder_name: str) -> None:
-    """Dialog: Git add/commit/push für submissions-Ordner; zeigt ausgeführte Befehle und Ausgabe."""
+def _show_git_push_dialog(folder_name: str, on_close: Callable[[], None] | None = None) -> None:
+    """Dialog: Git add/commit/push für submissions-Ordner; zeigt ausgeführte Befehle und Ausgabe.
+    on_close wird beim Schließen des Dialogs aufgerufen (z. B. um die Seite neu zu laden)."""
     repo_root = git_ops.get_repo_root(LAB_SUITE_ROOT)
     if repo_root is None:
         ui.notify("Kein Git-Repo erkannt.", type="warning")
@@ -704,7 +710,13 @@ def _show_git_push_dialog(folder_name: str) -> None:
         ui.html(
             f'<pre class="q-pa-sm bg-grey-3 rounded-borders" style="white-space:pre-wrap;max-height:320px;overflow:auto;font-size:0.85em;">{_escape_html(text)}</pre>'
         )
-        ui.button("Schließen", on_click=d.close).props("flat color=primary").classes("q-mt-sm")
+
+        def close_and_callback() -> None:
+            d.close()
+            if on_close:
+                on_close()
+
+        ui.button("Schließen", on_click=close_and_callback).props("flat color=primary").classes("q-mt-sm")
     d.open()
     if ok:
         ui.notify("Push erfolgreich.", type="positive")
@@ -837,22 +849,20 @@ def build_ui() -> None:
                                 extras = _task_markdown_extras()
                                 ui.markdown(task_content, extras=extras).classes("q-pa-sm bg-white rounded-borders")
 
-                        # SUBMIT-Checkbox: Aufgabe als erledigt markieren (State in submissions/task_done.txt, session-übergreifend + per Git sichtbar)
+                        # SUBMIT + GIT PUSH: Bei Check → task_done setzen und Git Push ausführen (Dialog bleibt offen bis Nutzer schließt); bei Uncheck nur task_done löschen
                         def _on_submit_check(folder: str, value: bool) -> None:
                             if value:
                                 if not _write_task_done(folder):
                                     ui.notify("Speichern fehlgeschlagen.", type="negative")
                                     return
                                 ui.notify("Als erledigt gespeichert (Abgabe am " + _read_task_done(folder) + ").", type="positive")
+                                _show_git_push_dialog(folder, on_close=lambda: ui.run_javascript("window.location.reload()"))
                             else:
-                                # Uncheck: task_done.txt löschen, Karte wird nach Reload wieder weiß
                                 _clear_task_done(folder)
                                 ui.notify("Markierung entfernt.", type="info")
-                            ui.run_javascript("window.location.reload()")
+                                ui.run_javascript("window.location.reload()")
 
                         with ui.row().classes("items-center q-gutter-sm full-width q-mt-sm q-pt-sm border-top"):
-                            # on_change muss im Konstruktor übergeben werden (NiceGUI registriert es sonst nicht).
-                            # fn=folder_name bindet den Ordner pro Karte. Neuer Wert aus e.args oder e.sender.value.
                             def _submit_check_handler(e, fn=folder_name):
                                 val = True
                                 if getattr(e, "args", None) is not None and len(e.args) > 0:
@@ -862,20 +872,12 @@ def build_ui() -> None:
                                 _on_submit_check(fn, val)
 
                             submit_check = ui.checkbox(
-                                "SUBMIT (als erledigt markieren)",
+                                "SUBMIT + GIT PUSH (auf GIT sichern und als erledigt markieren)",
                                 value=bool(task_done_date),
                                 on_change=_submit_check_handler,
                             )
                             if task_done_date:
                                 ui.label(f"Abgabe am {task_done_date}").classes("text-caption text-weight-medium text-green-8")
-                            if any(e.has_submissions_folder for e in folder_entries):
-                                ui.button(
-                                    "Git Push",
-                                    icon="push",
-                                    on_click=lambda fn=folder_name: _show_git_push_dialog(fn),
-                                ).props("flat dense color=primary").tooltip(
-                                    "git add submissions/ → commit → push origin (Ausgabe im Dialog)"
-                                )
 
                 # Pro Lab (eindeutige folder_name) eine Submit-Zeile: ZIP, Ordner öffnen, E-Mail – unter Expansion (default zu)
                 unique_folders = sorted({e.folder_name for e in group.entries})
